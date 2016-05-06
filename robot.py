@@ -30,6 +30,7 @@ class Robot:
                 self.handle_map_message
         )
 
+        # latch = True is this necessary?
         self.particle_publisher = rospy.Publisher(
                 '/particlecloud',
                 PoseArray,
@@ -40,14 +41,13 @@ class Robot:
         self.mapHeight = 0;
 
         #self.move_list = self.config['move_list']
-        #self.rate = rospy.Rate(1)
+        self.rate = rospy.Rate(1)
         #rospy.sleep(1) 
         #self.activation_publisher.publish(True)
         rospy.spin()
 
     def handle_map_message(self, message):
         mapdata = message.info
-        print mapdata
         width = mapdata.width
         height = mapdata.height
         pose_array = PoseArray()
@@ -65,7 +65,9 @@ class Robot:
             pose = get_pose(p.x, p.y, p.theta)
             pose_array.poses.append(pose)
         # Publish particles PoseArray
-        self.particle_publisher.publish(pose_array)
+        while not rospy.is_shutdown():
+            self.particle_publisher.publish(pose_array)
+            self.rate.sleep()
 
     def debug(self, s):
         fo = open("debug.txt", "w+")
