@@ -55,16 +55,17 @@ class Robot:
         pose_array.header.frame_id = 'map'
         pose_array.poses = []
         # Append each particle as Pose() object to poses list
-        for x in xrange(self.config['num_particles']):
+        numParticles = self.config['num_particles']
+        for x in xrange(numParticles):
             randX = randint(0, width)
             randY = randint(0, height)
-            randTheta = random.uniform(0, 2 * math.pi)
-            p = Particle(randX, randY, randTheta, 0)
+            #randTheta = random.uniform(0, 2 * math.pi)
+            randTheta = random.uniform(math.radians(0), math.radians(360))
+            p = Particle(randX, randY, randTheta, 1.0 / numParticles)
             pose = get_pose(p.x, p.y, p.theta)
             pose_array.poses.append(pose)
         # Publish particles PoseArray
         self.particle_publisher.publish(pose_array)
-            
 
     def debug(self, s):
         fo = open("debug.txt", "w+")
