@@ -2,9 +2,9 @@
 import rospy
 import math
 import itertools
-from copy import deepcopy
+from random import randint
 from nav_msgs.msg import OccupancyGrid, MapMetaData
-from geometry_msgs.msg import PoseArray
+from geometry_msgs.msg import Pose, PoseArray
 #from std_msgs.msg import Bool, String, Float32, Float32MultiArray
 #from cse_190_assi_1.msg import temperatureMessage, RobotProbabilities
 #from cse_190_assi_1.srv import requestMapData, requestTexture, moveService
@@ -14,6 +14,7 @@ class Robot:
     def __init__(self):
         self.config = read_config()
         rospy.init_node('robot', anonymous=True)
+
         """
         self.texture_requester = rospy.ServiceProxy(
                 "requestTexture",
@@ -27,13 +28,11 @@ class Robot:
                 self.handle_map_message
         )
 
-        """
-        self.activation_publisher = rospy.Publisher(
-                '/temp_sensor/activation',
-                Bool,
+        self.particle_publisher = rospy.Publisher(
+                '/particlecloud',
+                PoseArray,
                 queue_size = 1
         )
-        """
 
         self.mapWidth = 0;
         self.mapHeight = 0;
@@ -45,15 +44,29 @@ class Robot:
         rospy.spin()
 
     def handle_map_message(self, message):
-        print message.info
-        p = Particle(1, 2, 3)
-        print 'x: ', p.x
+        mapdata = message.info
+        width = mapdata.width
+        height = mapdata.height
+        pose_array = PoseArray()
+        pose_array.header.stamp = rospy.Time.now()
+        pose_array.header.frame_id = 'map'
+        pose_array.poses = []
+        # Append each particle as Pose() object to poses list
+        for x in xrange(self.config['num_particles']):
+            p = Particle(randint(0, width), randint(0, height), 0, 0)
+            print p.x, " ", p.y
+
+    def debug(self, s):
+        fo = open("debug.txt", "w+")
+        fo.write(str(s))
+        fo.close()
 
 class Particle:
-    def __init__(self, x, y, theta):
+    def __init__(self, x, y, theta, weight):
         self.x = x
         self.y = y
         self.theta = theta
+        self.weight = weight
         
 if __name__ == '__main__':
     try:
