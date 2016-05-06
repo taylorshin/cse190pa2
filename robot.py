@@ -1,7 +1,9 @@
 #!/usr/bin/env python
 import rospy
 import math
+import random
 import itertools
+from helper_functions import get_pose
 from random import randint
 from nav_msgs.msg import OccupancyGrid, MapMetaData
 from geometry_msgs.msg import Pose, PoseArray
@@ -45,6 +47,7 @@ class Robot:
 
     def handle_map_message(self, message):
         mapdata = message.info
+        print mapdata
         width = mapdata.width
         height = mapdata.height
         pose_array = PoseArray()
@@ -53,8 +56,15 @@ class Robot:
         pose_array.poses = []
         # Append each particle as Pose() object to poses list
         for x in xrange(self.config['num_particles']):
-            p = Particle(randint(0, width), randint(0, height), 0, 0)
-            print p.x, " ", p.y
+            randX = randint(0, width)
+            randY = randint(0, height)
+            randTheta = random.uniform(0, 2 * math.pi)
+            p = Particle(randX, randY, randTheta, 0)
+            pose = get_pose(p.x, p.y, p.theta)
+            pose_array.poses.append(pose)
+        # Publish particles PoseArray
+        self.particle_publisher.publish(pose_array)
+            
 
     def debug(self, s):
         fo = open("debug.txt", "w+")
