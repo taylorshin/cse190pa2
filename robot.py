@@ -5,11 +5,9 @@ import random
 from map_utils import Map
 from helper_functions import get_pose
 from random import randint
-from sklearn.neighbors import NearestNeighbors
+from sklearn.neighbors import NearestNeighbors, KDTree
 from nav_msgs.msg import OccupancyGrid, MapMetaData
 from geometry_msgs.msg import Pose, PoseArray
-#from cse_190_assi_1.msg import temperatureMessage, RobotProbabilities
-#from cse_190_assi_1.srv import requestMapData, requestTexture, moveService
 from read_config import read_config
 
 class Robot:
@@ -37,8 +35,15 @@ class Robot:
                 queue_size = 1
         )
 
-        self.mapWidth = 0;
-        self.mapHeight = 0;
+        self.likelihood_publisher = rospy.Publisher(
+                '/likelihood_field',
+                OccupancyGrid,
+                latch = True,
+                queue_size = 1
+        )
+
+        self.map = None
+        self.likelihood_field = None
 
         #self.move_list = self.config['move_list']
         self.rate = rospy.Rate(1)
@@ -69,23 +74,46 @@ class Robot:
         self.particle_publisher.publish(pose_array)
         
         # Instantiate Map class
+        self.map = Map(message)
         self.likelihood_field = Map(message)
 
         # Go through all points, find occupied points and add to KDTree
-        self.KDTree = []
-        for row in xrange(height):
-            for col in xrange(width):
-                if self.likelihood_field.get_cell(row, col) == 1.0:
-                    self.KDTree.append(self.likelihood_field.cell_position(row, col))
-        print self.KDTree
+        points_occupied = []
+        points_all = []
+        for x in xrange(width):
+            for y in xrange(height):
+                # use original map
+                if self.map.get_cell(x, y) == 1.0:
+                    points_occupied.append((x, y))
+                points_all.append((x, y))
+        # Create KDTree
+        kdt = KDTree(points_occupied)
+
+        # Precompute likelihood stuff
+        sigma = self.config['laser_sigma_hit']
+        dists, indices = kdt.query(points_all, k=1)
+        count = 0
+        for x in xrange(width):
+            for y in xrange(height):
+                dist = dists[count]
+                count += 1
+                q = self.gaussian(dist, 0, sigma)
+                self.likelihood_field.set_cell(x, y, q)
+
+        # Publish likelihood field message
+        self.likelihood_publisher.publish(self.likelihood_field.to_message())
+                
 
     def calculate_likelihood(self):
        print "asdf" 
 
-    def debug(self, s):
-        fo = open("debug.txt", "w+")
-        fo.write(str(s))
-        fo.close()
+    # Gaussian random variable
+    def gaussian(self, t, mean, std):
+        coefficient = 1.0 / (std * math.sqrt(2 * math.pi))
+        exponent = -math.pow(t - mean, 2) / (2 * math.pow(std, 2))
+        val = coefficient * math.exp(exponent)
+        #return (1.0 / (std * math.sqrt(2 * math.pi))) * math.exp( (-(t - mean)**2)/(2*std**2))
+        return val
 
 class Particle:
     def __init__(self, x, y, theta, weight):
