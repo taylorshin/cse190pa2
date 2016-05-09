@@ -2,14 +2,12 @@
 import rospy
 import math
 import random
-import itertools
 from map_utils import Map
 from helper_functions import get_pose
 from random import randint
 from sklearn.neighbors import NearestNeighbors
 from nav_msgs.msg import OccupancyGrid, MapMetaData
 from geometry_msgs.msg import Pose, PoseArray
-#from std_msgs.msg import Bool, String, Float32, Float32MultiArray
 #from cse_190_assi_1.msg import temperatureMessage, RobotProbabilities
 #from cse_190_assi_1.srv import requestMapData, requestTexture, moveService
 from read_config import read_config
@@ -71,7 +69,15 @@ class Robot:
         self.particle_publisher.publish(pose_array)
         
         # Instantiate Map class
-        self.likehood_field = Map(message)
+        self.likelihood_field = Map(message)
+
+        # Go through all points, find occupied points and add to KDTree
+        self.KDTree = []
+        for row in xrange(height):
+            for col in xrange(width):
+                if self.likelihood_field.get_cell(row, col) == 1.0:
+                    self.KDTree.append(self.likelihood_field.cell_position(row, col))
+        print self.KDTree
 
     def calculate_likelihood(self):
        print "asdf" 
