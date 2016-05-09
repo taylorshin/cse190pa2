@@ -3,8 +3,10 @@ import rospy
 import math
 import random
 import itertools
+from map_utils import Map
 from helper_functions import get_pose
 from random import randint
+from sklearn.neighbors import NearestNeighbors
 from nav_msgs.msg import OccupancyGrid, MapMetaData
 from geometry_msgs.msg import Pose, PoseArray
 #from std_msgs.msg import Bool, String, Float32, Float32MultiArray
@@ -30,10 +32,10 @@ class Robot:
                 self.handle_map_message
         )
 
-        # latch = True is this necessary?
         self.particle_publisher = rospy.Publisher(
                 '/particlecloud',
                 PoseArray,
+                latch = True,
                 queue_size = 1
         )
 
@@ -64,10 +66,15 @@ class Robot:
             p = Particle(randX, randY, randTheta, 1.0 / numParticles)
             pose = get_pose(p.x, p.y, p.theta)
             pose_array.poses.append(pose)
+
         # Publish particles PoseArray
-        while not rospy.is_shutdown():
-            self.particle_publisher.publish(pose_array)
-            self.rate.sleep()
+        self.particle_publisher.publish(pose_array)
+        
+        # Instantiate Map class
+        self.likehood_field = Map(message)
+
+    def calculate_likelihood(self):
+       print "asdf" 
 
     def debug(self, s):
         fo = open("debug.txt", "w+")
