@@ -3,7 +3,7 @@ import rospy
 import math
 import random
 from map_utils import Map
-from helper_functions import get_pose
+from helper_functions import get_pose, move_function
 from random import randint
 from sklearn.neighbors import NearestNeighbors, KDTree
 from nav_msgs.msg import OccupancyGrid, MapMetaData
@@ -14,13 +14,6 @@ class Robot:
     def __init__(self):
         self.config = read_config()
         rospy.init_node('robot', anonymous=True)
-
-        """
-        self.texture_requester = rospy.ServiceProxy(
-                "requestTexture",
-                requestTexture
-        )
-        """
 
         self.map_subscriber = rospy.Subscriber(
                 "/map",
@@ -44,6 +37,8 @@ class Robot:
 
         self.map = None
         self.likelihood_field = None
+        self.width = 0
+        self.height = 0
 
         #self.move_list = self.config['move_list']
         self.rate = rospy.Rate(1)
@@ -53,8 +48,30 @@ class Robot:
 
     def handle_map_message(self, message):
         mapdata = message.info
-        width = mapdata.width
-        height = mapdata.height
+        self.width = mapdata.width
+        self.height = mapdata.height
+
+        # Initialize the particles
+        self.initialize_particles()
+
+        # Instantiate Map class
+        self.map = Map(message)
+        self.likelihood_field = Map(message)
+
+        # Construct the likelihood field
+        self.calculate_likelihood()
+
+        # Move the robot
+        move_list = self.config['move_list']
+        move = move_list[0]
+        move_function(move[0], 0)
+        for x in xrange(move[2]):
+            move_function(0, move[1])
+
+        # Move update for the particles
+
+    
+    def initialize_particles(self):
         pose_array = PoseArray()
         pose_array.header.stamp = rospy.Time.now()
         pose_array.header.frame_id = 'map'
@@ -62,9 +79,8 @@ class Robot:
         # Append each particle as Pose() object to poses list
         numParticles = self.config['num_particles']
         for x in xrange(numParticles):
-            randX = randint(0, width)
-            randY = randint(0, height)
-            #randTheta = random.uniform(0, 2 * math.pi)
+            randX = randint(0, self.width)
+            randY = randint(0, self.height)
             randTheta = random.uniform(math.radians(0), math.radians(360))
             p = Particle(randX, randY, randTheta, 1.0 / numParticles)
             pose = get_pose(p.x, p.y, p.theta)
@@ -72,16 +88,13 @@ class Robot:
 
         # Publish particles PoseArray
         self.particle_publisher.publish(pose_array)
-        
-        # Instantiate Map class
-        self.map = Map(message)
-        self.likelihood_field = Map(message)
 
+    def calculate_likelihood(self):
         # Go through all points, find occupied points and add to KDTree
         points_occupied = []
         points_all = []
-        for x in xrange(width):
-            for y in xrange(height):
+        for x in xrange(self.width):
+            for y in xrange(self.height):
                 # use original map
                 if self.map.get_cell(x, y) == 1.0:
                     points_occupied.append((x, y))
@@ -93,8 +106,8 @@ class Robot:
         sigma = self.config['laser_sigma_hit']
         dists, indices = kdt.query(points_all, k=1)
         count = 0
-        for x in xrange(width):
-            for y in xrange(height):
+        for x in xrange(self.width):
+            for y in xrange(self.height):
                 dist = dists[count]
                 count += 1
                 q = self.gaussian(dist, 0, sigma)
@@ -102,17 +115,12 @@ class Robot:
 
         # Publish likelihood field message
         self.likelihood_publisher.publish(self.likelihood_field.to_message())
-                
-
-    def calculate_likelihood(self):
-       print "asdf" 
 
     # Gaussian random variable
     def gaussian(self, t, mean, std):
         coefficient = 1.0 / (std * math.sqrt(2 * math.pi))
         exponent = -math.pow(t - mean, 2) / (2 * math.pow(std, 2))
         val = coefficient * math.exp(exponent)
-        #return (1.0 / (std * math.sqrt(2 * math.pi))) * math.exp( (-(t - mean)**2)/(2*std**2))
         return val
 
 class Particle:
