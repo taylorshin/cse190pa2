@@ -21,6 +21,9 @@ class Robot:
                 self.handle_map_message
         )
 
+        # latch publishes same thing over and over
+        # loop that publishes every 0.1 secs
+        # use timer async callback for this
         self.particle_publisher = rospy.Publisher(
                 '/particlecloud',
                 PoseArray,
@@ -69,13 +72,20 @@ class Robot:
             move_function(0, move[1])
 
         # Move update for the particles
-
+        # Create own move function for particles
+        # Normalize (once per timestep) then resample
     
+    def add_noise(self, true_val):
+        """Returns measurement after adding Gaussian noise."""
+        noise = m.ceil(random.gauss(0, self.config['temp_noise_std_dev']))
+        noisy_measurement = true_val + noise
+        return noisy_measurement
+
     def initialize_particles(self):
-        pose_array = PoseArray()
-        pose_array.header.stamp = rospy.Time.now()
-        pose_array.header.frame_id = 'map'
-        pose_array.poses = []
+        self.pose_array = PoseArray()
+        self.pose_array.header.stamp = rospy.Time.now()
+        self.pose_array.header.frame_id = 'map'
+        self.pose_array.poses = []
         # Append each particle as Pose() object to poses list
         numParticles = self.config['num_particles']
         for x in xrange(numParticles):
@@ -84,10 +94,10 @@ class Robot:
             randTheta = random.uniform(math.radians(0), math.radians(360))
             p = Particle(randX, randY, randTheta, 1.0 / numParticles)
             pose = get_pose(p.x, p.y, p.theta)
-            pose_array.poses.append(pose)
+            self.pose_array.poses.append(pose)
 
         # Publish particles PoseArray
-        self.particle_publisher.publish(pose_array)
+        self.particle_publisher.publish(self.pose_array)
 
     def calculate_likelihood(self):
         # Go through all points, find occupied points and add to KDTree
