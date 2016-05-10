@@ -67,37 +67,52 @@ class Robot:
         # Move the robot
         move_list = self.config['move_list']
         move = move_list[0]
-        move_function(move[0], 0)
-        for x in xrange(move[2]):
-            move_function(0, move[1])
+        # Angle is in degrees
+        angle = move[0]
+        dist = move[1]
+        steps = move[2]
+        move_function(angle, 0)
+        for x in xrange(steps):
+            move_function(0, dist)
+            self.move_particles(dist, angle)
 
         # Move update for the particles
         # Create own move function for particles
         # Normalize (once per timestep) then resample
+
+    def move_particles(self, dist, angle):
+        for p in self.particles:
+            p.x = p.x + dist * math.cos(math.radians(angle)) + self.add_noise(self.config['first_move_sigma_x'])
+            p.y = p.y + dist * math.sin(math.radians(angle)) + self.add_noise(self.config['first_move_sigma_y'])
+            p.theta = p.theta + self.add_noise(self.config['first_move_sigma_angle'])
+        self.publish_particles()
     
-    def add_noise(self, true_val):
-        """Returns measurement after adding Gaussian noise."""
-        noise = m.ceil(random.gauss(0, self.config['temp_noise_std_dev']))
-        noisy_measurement = true_val + noise
-        return noisy_measurement
+    """ Adds Gaussian noise to value """
+    def add_noise(self, sigma):
+        return math.ceil(random.gauss(0, sigma))
 
     def initialize_particles(self):
-        self.pose_array = PoseArray()
-        self.pose_array.header.stamp = rospy.Time.now()
-        self.pose_array.header.frame_id = 'map'
-        self.pose_array.poses = []
-        # Append each particle as Pose() object to poses list
+        self.particles = []
         numParticles = self.config['num_particles']
         for x in xrange(numParticles):
             randX = randint(0, self.width)
             randY = randint(0, self.height)
             randTheta = random.uniform(math.radians(0), math.radians(360))
             p = Particle(randX, randY, randTheta, 1.0 / numParticles)
-            pose = get_pose(p.x, p.y, p.theta)
-            self.pose_array.poses.append(pose)
+            self.particles.append(p)
+        # Publish particles via custom function
+        self.publish_particles()
 
+    def publish_particles(self):
+        pose_array = PoseArray()
+        pose_array.header.stamp = rospy.Time.now()
+        pose_array.header.frame_id = 'map'
+        pose_array.poses = []
+        for p in self.particles:
+            pose = get_pose(p.x, p.y, p.theta)
+            pose_array.poses.append(pose)
         # Publish particles PoseArray
-        self.particle_publisher.publish(self.pose_array)
+        self.particle_publisher.publish(pose_array)
 
     def calculate_likelihood(self):
         # Go through all points, find occupied points and add to KDTree
