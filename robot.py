@@ -21,13 +21,10 @@ class Robot:
                 self.handle_map_message
         )
 
-        # latch publishes same thing over and over
-        # loop that publishes every 0.1 secs
-        # use timer async callback for this
+        # latch publishes same last thing over and over
         self.particle_publisher = rospy.Publisher(
                 '/particlecloud',
                 PoseArray,
-                latch = True,
                 queue_size = 1
         )
 
@@ -38,13 +35,15 @@ class Robot:
                 queue_size = 1
         )
 
+        # Async timer callback that publishes every 0.1 seconds
+        self.particle_publisher_timer = rospy.Timer(rospy.Duration(0.1), self.publish_particles)
+
         self.map = None
         self.likelihood_field = None
         self.width = 0
         self.height = 0
 
-        #self.move_list = self.config['move_list']
-        self.rate = rospy.Rate(1)
+        #self.rate = rospy.Rate(1)
         #rospy.sleep(1) 
         #self.activation_publisher.publish(True)
         rospy.spin()
@@ -72,11 +71,13 @@ class Robot:
         dist = move[1]
         steps = move[2]
         move_function(angle, 0)
+        count = 0
         for x in xrange(steps):
             move_function(0, dist)
-            self.move_particles(dist, angle)
+            #self.move_particles(dist, angle)
 
         # Move update for the particles
+        #self.move_particles(dist, angle)
         # Create own move function for particles
         # Normalize (once per timestep) then resample
 
@@ -85,7 +86,7 @@ class Robot:
             p.x = p.x + dist * math.cos(math.radians(angle)) + self.add_noise(self.config['first_move_sigma_x'])
             p.y = p.y + dist * math.sin(math.radians(angle)) + self.add_noise(self.config['first_move_sigma_y'])
             p.theta = p.theta + self.add_noise(self.config['first_move_sigma_angle'])
-        self.publish_particles()
+        #self.update_particles()
     
     """ Adds Gaussian noise to value """
     def add_noise(self, sigma):
@@ -101,9 +102,10 @@ class Robot:
             p = Particle(randX, randY, randTheta, 1.0 / numParticles)
             self.particles.append(p)
         # Publish particles via custom function
-        self.publish_particles()
+        #self.publish_particles()
 
-    def publish_particles(self):
+    """ Particle Publisher Callback """
+    def publish_particles(self, event):
         pose_array = PoseArray()
         pose_array.header.stamp = rospy.Time.now()
         pose_array.header.frame_id = 'map'
@@ -112,6 +114,7 @@ class Robot:
             pose = get_pose(p.x, p.y, p.theta)
             pose_array.poses.append(pose)
         # Publish particles PoseArray
+        #rospy.sleep(0.1) 
         self.particle_publisher.publish(pose_array)
 
     def calculate_likelihood(self):
