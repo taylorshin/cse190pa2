@@ -8,6 +8,7 @@ from random import randint
 from sklearn.neighbors import NearestNeighbors, KDTree
 from nav_msgs.msg import OccupancyGrid, MapMetaData
 from geometry_msgs.msg import Pose, PoseArray
+from sensor_msgs.msg import LaserScan
 from read_config import read_config
 
 class Robot:
@@ -16,11 +17,17 @@ class Robot:
         rospy.init_node('robot', anonymous=True)
 
         self.map_subscriber = rospy.Subscriber(
-                "/map",
+                '/map',
                 OccupancyGrid,
                 self.handle_map_message
         )
-
+        """
+        self.laser_subscriber = rospy.Subscriber(
+                '/base_scan',
+                LaserScan,
+                self.handle_laser_scan
+        )
+        """
         # latch publishes same last thing over and over
         self.particle_publisher = rospy.Publisher(
                 '/particlecloud',
@@ -65,28 +72,33 @@ class Robot:
 
         # Move the robot
         move_list = self.config['move_list']
+        # First Move stuff
         move = move_list[0]
         # Angle is in degrees
         angle = move[0]
         dist = move[1]
         steps = move[2]
+        # move function takes in degree angle
         move_function(angle, 0)
         count = 0
         for x in xrange(steps):
             move_function(0, dist)
-            #self.move_particles(dist, angle)
-
-        # Move update for the particles
-        #self.move_particles(dist, angle)
-        # Create own move function for particles
+            # Move update for the particles
+            self.move_particles(dist, math.radians(angle))
         # Normalize (once per timestep) then resample
+
+    """ Callback for laser_publisher """
+    #def handle_laser_scan(self, message):
+    #print message
 
     def move_particles(self, dist, angle):
         for p in self.particles:
-            p.x = p.x + dist * math.cos(math.radians(angle)) + self.add_noise(self.config['first_move_sigma_x'])
-            p.y = p.y + dist * math.sin(math.radians(angle)) + self.add_noise(self.config['first_move_sigma_y'])
+            # if move_list has non zero angle then add it to particles theta
+            if angle != 0:
+                p.theta += angle
+            p.x = p.x + dist * math.cos(p.theta) + self.add_noise(self.config['first_move_sigma_x'])
+            p.y = p.y + dist * math.sin(p.theta) + self.add_noise(self.config['first_move_sigma_y'])
             p.theta = p.theta + self.add_noise(self.config['first_move_sigma_angle'])
-        #self.update_particles()
     
     """ Adds Gaussian noise to value """
     def add_noise(self, sigma):
@@ -96,13 +108,11 @@ class Robot:
         self.particles = []
         numParticles = self.config['num_particles']
         for x in xrange(numParticles):
-            randX = randint(0, self.width)
-            randY = randint(0, self.height)
+            randX = random.uniform(0, self.width)
+            randY = random.uniform(0, self.height)
             randTheta = random.uniform(math.radians(0), math.radians(360))
             p = Particle(randX, randY, randTheta, 1.0 / numParticles)
             self.particles.append(p)
-        # Publish particles via custom function
-        #self.publish_particles()
 
     """ Particle Publisher Callback """
     def publish_particles(self, event):
@@ -151,10 +161,12 @@ class Robot:
         val = coefficient * math.exp(exponent)
         return val
 
+""" Represent particles with custom class """
 class Particle:
     def __init__(self, x, y, theta, weight):
         self.x = x
         self.y = y
+        # Theta is in radians
         self.theta = theta
         self.weight = weight
         
