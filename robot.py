@@ -21,13 +21,13 @@ class Robot:
                 OccupancyGrid,
                 self.handle_map_message
         )
-        """
+
         self.laser_subscriber = rospy.Subscriber(
                 '/base_scan',
                 LaserScan,
                 self.handle_laser_scan
         )
-        """
+
         # latch publishes same last thing over and over
         self.particle_publisher = rospy.Publisher(
                 '/particlecloud',
@@ -45,8 +45,8 @@ class Robot:
         # Async timer callback that publishes every 0.1 seconds
         self.particle_publisher_timer = rospy.Timer(rospy.Duration(0.1), self.publish_particles)
 
-        self.map = None
-        self.likelihood_field = None
+        #self.map = None
+        #self.likelihood_field = None
         self.width = 0
         self.height = 0
 
@@ -55,6 +55,7 @@ class Robot:
         #self.activation_publisher.publish(True)
         rospy.spin()
 
+    """ Callback for map subscriber """
     def handle_map_message(self, message):
         mapdata = message.info
         self.width = mapdata.width
@@ -86,10 +87,12 @@ class Robot:
             # Move update for the particles
             self.move_particles(dist, math.radians(angle))
         # Normalize (once per timestep) then resample
+        #rospy.sleep(1) 
+        #rospy.signal_shutdown(self)
 
-    """ Callback for laser_publisher """
-    #def handle_laser_scan(self, message):
-    #print message
+    """ Callback for laser subscriber """
+    def handle_laser_scan(self, message):
+        print message
 
     def move_particles(self, dist, angle):
         for p in self.particles:
@@ -135,8 +138,10 @@ class Robot:
             for y in xrange(self.height):
                 # use original map
                 if self.map.get_cell(x, y) == 1.0:
-                    points_occupied.append((x, y))
-                points_all.append((x, y))
+                    #points_occupied.append((x, y))
+                    points_occupied.append(self.map.cell_position(y, x))
+                #points_all.append((x, y))
+                points_all.append(self.map.cell_position(y, x))
         # Create KDTree
         kdt = KDTree(points_occupied)
 
@@ -160,7 +165,7 @@ class Robot:
         exponent = -math.pow(t - mean, 2) / (2 * math.pow(std, 2))
         val = coefficient * math.exp(exponent)
         return val
-
+    
 """ Represent particles with custom class """
 class Particle:
     def __init__(self, x, y, theta, weight):
