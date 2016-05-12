@@ -2,6 +2,7 @@
 import rospy
 import math
 import random
+import json
 from map_utils import Map
 from helper_functions import get_pose, move_function
 from random import randint
@@ -44,6 +45,8 @@ class Robot:
 
         # Async timer callback that publishes every 0.1 seconds
         self.particle_publisher_timer = rospy.Timer(rospy.Duration(0.1), self.publish_particles)
+
+        self.particles = None
 
         #self.rate = rospy.Rate(1)
         #rospy.sleep(1) 
@@ -145,12 +148,13 @@ class Robot:
         pose_array.header.stamp = rospy.Time.now()
         pose_array.header.frame_id = 'map'
         pose_array.poses = []
-        for p in self.particles:
-            pose = get_pose(p.x, p.y, p.theta)
-            pose_array.poses.append(pose)
-        # Publish particles PoseArray
-        #rospy.sleep(0.1) 
-        self.particle_publisher.publish(pose_array)
+        if self.particles:
+            for p in self.particles:
+                pose = get_pose(p.x, p.y, p.theta)
+                pose_array.poses.append(pose)
+            # Publish particles PoseArray
+            #rospy.sleep(0.1) 
+            self.particle_publisher.publish(pose_array)
 
     def calculate_likelihood(self):
         # Go through all points, find occupied points and add to KDTree
@@ -187,6 +191,12 @@ class Robot:
         exponent = -math.pow(t - mean, 2) / (2 * math.pow(std, 2))
         val = coefficient * math.exp(exponent)
         return val
+
+    def debug(self, message):
+        with open('debug.json', 'w+') as debug:
+            debug.write('{\n"debug_messages" : ')
+            json.dump(message, debug)
+            debug.write('\n} \n')
     
 """ Represent particles with custom class """
 class Particle:
