@@ -21,13 +21,13 @@ class Robot:
                 OccupancyGrid,
                 self.handle_map_message
         )
-
+       
         self.laser_subscriber = rospy.Subscriber(
                 '/base_scan',
                 LaserScan,
                 self.handle_laser_scan
         )
-
+        
         # latch publishes same last thing over and over
         self.particle_publisher = rospy.Publisher(
                 '/particlecloud',
@@ -44,11 +44,6 @@ class Robot:
 
         # Async timer callback that publishes every 0.1 seconds
         self.particle_publisher_timer = rospy.Timer(rospy.Duration(0.1), self.publish_particles)
-
-        #self.map = None
-        #self.likelihood_field = None
-        self.width = 0
-        self.height = 0
 
         #self.rate = rospy.Rate(1)
         #rospy.sleep(1) 
@@ -86,13 +81,40 @@ class Robot:
             move_function(0, dist)
             # Move update for the particles
             self.move_particles(dist, math.radians(angle))
+        # Reweight the particles
+        self.reweight_particles()
         # Normalize (once per timestep) then resample
         #rospy.sleep(1) 
         #rospy.signal_shutdown(self)
 
     """ Callback for laser subscriber """
     def handle_laser_scan(self, message):
-        print message
+        self.angle_min = message.angle_min
+        self.angle_max = message.angle_max
+        self.angle_increment = message.angle_increment
+        self.ranges = message.ranges
+
+    """ Re-weight all the particles and normalize over all particles """
+    def reweight_particles(self):
+        sum_weight = 0
+        for p in self.particles:
+            p_tot = 1
+            for x in xrange(len(self.ranges)):
+                angle_local = self.angle_min + x * self.angle_increment
+                angle_global = angle_local + p.theta
+                endpoint_x = p.x + self.ranges[x] * math.cos(angle_global)
+                endpoint_y = p.y + self.ranges[x] * math.sin(angle_global)
+                likelihood = self.likelihood_field.get_cell(endpoint_x, endpoint_y)
+                p_z = self.config['laser_z_hit'] * likelihood + self.config['laser_z_rand']
+                p_tot *= p_z
+            p.weight = p.weight * p_tot
+            sum_weight += p.weight
+        # Normalize weight of particles
+        nsum = 0
+        for p in self.particles:
+            p.weight /= sum_weight
+            nsum += p.weight
+        print 'normalized sum: ', nsum
 
     def move_particles(self, dist, angle):
         for p in self.particles:
