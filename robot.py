@@ -3,7 +3,9 @@ import rospy
 import math
 import random
 import json
+import numpy as np
 from map_utils import Map
+from copy import deepcopy
 from helper_functions import get_pose, move_function
 from random import randint
 from sklearn.neighbors import NearestNeighbors, KDTree
@@ -46,7 +48,7 @@ class Robot:
         # Async timer callback that publishes every 0.1 seconds
         self.particle_publisher_timer = rospy.Timer(rospy.Duration(0.1), self.publish_particles)
 
-        self.particles = None
+        #self.particles = None
 
         #self.rate = rospy.Rate(1)
         #rospy.sleep(1) 
@@ -71,24 +73,26 @@ class Robot:
 
         # Move the robot
         move_list = self.config['move_list']
-        # First Move stuff
-        move = move_list[0]
-        # Angle is in degrees
-        angle = move[0]
-        dist = move[1]
-        steps = move[2]
-        # move function takes in degree angle
-        move_function(angle, 0)
-        count = 0
-        for x in xrange(steps):
-            move_function(0, dist)
-            # Move update for the particles
-            self.move_particles(dist, math.radians(angle))
-        # Reweight the particles
-        self.reweight_particles()
-        # Normalize (once per timestep) then resample
-        #rospy.sleep(1) 
-        #rospy.signal_shutdown(self)
+        firstmove = 0
+        for move in move_list:
+            # Angle is in degrees
+            angle = move[0]
+            dist = move[1]
+            steps = move[2]
+            # move function takes in degree angle
+            move_function(angle, 0)
+            for x in xrange(steps):
+                move_function(0, dist)
+                # Move update for the particles
+                self.move_particles(dist, math.radians(angle), firstmove)
+            # Reweight the particles
+            self.reweight_particles()
+            # Resample
+            self.resample_particles()
+            firstmove += 1
+
+        rospy.sleep(1) 
+        rospy.signal_shutdown(self)
 
     """ Callback for laser subscriber """
     def handle_laser_scan(self, message):
@@ -99,34 +103,63 @@ class Robot:
 
     """ Re-weight all the particles and normalize over all particles """
     def reweight_particles(self):
-        sum_weight = 0
+        #sum_weight = 0
         for p in self.particles:
-            p_tot = 1
+            p_tot = 0
             for x in xrange(len(self.ranges)):
                 angle_local = self.angle_min + x * self.angle_increment
                 angle_global = angle_local + p.theta
                 endpoint_x = p.x + self.ranges[x] * math.cos(angle_global)
                 endpoint_y = p.y + self.ranges[x] * math.sin(angle_global)
                 likelihood = self.likelihood_field.get_cell(endpoint_x, endpoint_y)
-                p_z = self.config['laser_z_hit'] * likelihood + self.config['laser_z_rand']
-                p_tot *= p_z
+                # Ignore points outside of map, which give nan
+                if math.isnan(likelihood):
+                    p_z = 0
+                else:
+                    p_z = self.config['laser_z_hit'] * likelihood + self.config['laser_z_rand']
+                p_tot += p_z**2
             p.weight = p.weight * p_tot
-            sum_weight += p.weight
+            #sum_weight += p.weight
+            #print p.weight, sum_weight
         # Normalize weight of particles
+        sum_weight = 0
+        for p in self.particles:
+            sum_weight += p.weight
         nsum = 0
         for p in self.particles:
+            #print p.weight
             p.weight /= sum_weight
             nsum += p.weight
         print 'normalized sum: ', nsum
 
-    def move_particles(self, dist, angle):
+    """ Resample the particles with noise """
+    def resample_particles(self):
+        weight_list = []
+        for p in self.particles:
+            weight_list.append(p.weight)
+        resample = np.random.choice(self.particles, 800, p=weight_list)
+        print 'resample size: ', len(resample)
+        for p in resample:
+            p.x = p.x + random.gauss(0, self.config['resample_sigma_x'])
+            p.y = p.y + random.gauss(0, self.config['resample_sigma_y'])
+            p.theta = p.theta + random.gauss(0, self.config['resample_sigma_angle'])
+        self.particles = deepcopy(resample)
+
+    """ Move and update the particles """
+    def move_particles(self, dist, angle, firstmove):
+        #if not self.particles:
+        #return
         for p in self.particles:
             # if move_list has non zero angle then add it to particles theta
             if angle != 0:
                 p.theta += angle
-            p.x = p.x + dist * math.cos(p.theta) + self.add_noise(self.config['first_move_sigma_x'])
-            p.y = p.y + dist * math.sin(p.theta) + self.add_noise(self.config['first_move_sigma_y'])
-            p.theta = p.theta + self.add_noise(self.config['first_move_sigma_angle'])
+            if firstmove == 0:
+                p.x = p.x + dist * math.cos(p.theta) + self.add_noise(self.config['first_move_sigma_x'])
+                p.y = p.y + dist * math.sin(p.theta) + self.add_noise(self.config['first_move_sigma_y'])
+                p.theta = p.theta + self.add_noise(self.config['first_move_sigma_angle'])
+            else:
+                p.x = p.x + dist * math.cos(p.theta)
+                p.y = p.y + dist * math.sin(p.theta)
     
     """ Adds Gaussian noise to value """
     def add_noise(self, sigma):
@@ -148,13 +181,12 @@ class Robot:
         pose_array.header.stamp = rospy.Time.now()
         pose_array.header.frame_id = 'map'
         pose_array.poses = []
-        if self.particles:
-            for p in self.particles:
-                pose = get_pose(p.x, p.y, p.theta)
-                pose_array.poses.append(pose)
-            # Publish particles PoseArray
-            #rospy.sleep(0.1) 
-            self.particle_publisher.publish(pose_array)
+        for p in self.particles:
+            pose = get_pose(p.x, p.y, p.theta)
+            pose_array.poses.append(pose)
+        # Publish particles PoseArray
+        #rospy.sleep(1) 
+        self.particle_publisher.publish(pose_array)
 
     def calculate_likelihood(self):
         # Go through all points, find occupied points and add to KDTree
@@ -183,6 +215,7 @@ class Robot:
                 self.likelihood_field.set_cell(x, y, q)
 
         # Publish likelihood field message
+        #rospy.sleep(1) 
         self.likelihood_publisher.publish(self.likelihood_field.to_message())
 
     # Gaussian random variable
