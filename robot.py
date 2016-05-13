@@ -8,6 +8,7 @@ from map_utils import Map
 from copy import deepcopy
 from helper_functions import get_pose, move_function
 from random import randint
+from std_msgs.msg import Bool
 from sklearn.neighbors import NearestNeighbors, KDTree
 from nav_msgs.msg import OccupancyGrid, MapMetaData
 from geometry_msgs.msg import Pose, PoseArray
@@ -42,6 +43,18 @@ class Robot:
                 '/likelihood_field',
                 OccupancyGrid,
                 latch = True,
+                queue_size = 1
+        )
+
+        self.result_publisher = rospy.Publisher(
+                '/result_update',
+                Bool,
+                queue_size = 1
+        )
+
+        self.complete_publisher = rospy.Publisher(
+                '/sim_complete',
+                Bool,
                 queue_size = 1
         )
 
@@ -88,11 +101,15 @@ class Robot:
 
             # Reweight the particles
             self.reweight_particles()
-            # ZERO OUT OUT OF BOUNDS OR ON OBSTACLE
+            # Zero out weights of particles out of bounds or on obstacle
             # Resample
             self.resample_particles()
             firstmove += 1
+            # Publish after every move list pop
+            self.result_publisher.publish(True)
 
+        # Publish before shutdown
+        self.complete_publisher.publish(True)
         rospy.sleep(1) 
         rospy.signal_shutdown(self)
 
@@ -105,24 +122,25 @@ class Robot:
 
     """ Re-weight all the particles and normalize over all particles """
     def reweight_particles(self):
-        #sum_weight = 0
         for p in self.particles:
-            p_tot = 0
-            for x in xrange(len(self.ranges)):
-                angle_local = self.angle_min + x * self.angle_increment
-                angle_global = angle_local + p.theta
-                endpoint_x = p.x + self.ranges[x] * math.cos(angle_global)
-                endpoint_y = p.y + self.ranges[x] * math.sin(angle_global)
-                likelihood = self.likelihood_field.get_cell(endpoint_x, endpoint_y)
-                # Ignore points outside of map, which give nan
-                if math.isnan(likelihood):
-                    p_z = 0
-                else:
-                    p_z = self.config['laser_z_hit'] * likelihood + self.config['laser_z_rand']
-                p_tot += p_z**2
-            p.weight = p.weight * p_tot
-            #sum_weight += p.weight
-            #print p.weight, sum_weight
+            # Zero out weights of particles out of bounds or on obstacle
+            if math.isnan(self.map.get_cell(p.x, p.y)) or self.map.get_cell(p.x, p.y) == 1.0:
+                p.weight = 0
+            else:
+                p_tot = 0
+                for x in xrange(len(self.ranges)):
+                    angle_local = self.angle_min + x * self.angle_increment
+                    angle_global = angle_local + p.theta
+                    endpoint_x = p.x + self.ranges[x] * math.cos(angle_global)
+                    endpoint_y = p.y + self.ranges[x] * math.sin(angle_global)
+                    likelihood = self.likelihood_field.get_cell(endpoint_x, endpoint_y)
+                    # Ignore points outside of map, which give nan
+                    if math.isnan(likelihood):
+                        p_z = 0
+                    else:
+                        p_z = self.config['laser_z_hit'] * likelihood + self.config['laser_z_rand']
+                    p_tot += p_z**2
+                p.weight = p.weight * p_tot
 
         # Get total weight of particles
         sum_weight = 0
@@ -132,10 +150,10 @@ class Robot:
         # Normalize weight of particles
         nsum = 0
         for p in self.particles:
-            #print p.weight
             p.weight /= sum_weight
             nsum += p.weight
-        print 'normalized sum: ', nsum
+        
+        #print 'normalized sum: ', nsum
 
     """ Resample the particles with noise """
     def resample_particles(self):
