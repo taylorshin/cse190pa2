@@ -85,8 +85,10 @@ class Robot:
                 move_function(0, dist)
                 # Move update for the particles
                 self.move_particles(dist, math.radians(angle), firstmove)
+
             # Reweight the particles
             self.reweight_particles()
+            # ZERO OUT OUT OF BOUNDS OR ON OBSTACLE
             # Resample
             self.resample_particles()
             firstmove += 1
@@ -121,10 +123,13 @@ class Robot:
             p.weight = p.weight * p_tot
             #sum_weight += p.weight
             #print p.weight, sum_weight
-        # Normalize weight of particles
+
+        # Get total weight of particles
         sum_weight = 0
         for p in self.particles:
             sum_weight += p.weight
+
+        # Normalize weight of particles
         nsum = 0
         for p in self.particles:
             #print p.weight
@@ -137,13 +142,19 @@ class Robot:
         weight_list = []
         for p in self.particles:
             weight_list.append(p.weight)
+        #print weight_list
+
         resample = np.random.choice(self.particles, 800, p=weight_list)
-        print 'resample size: ', len(resample)
+        newlist = []
+
         for p in resample:
-            p.x = p.x + random.gauss(0, self.config['resample_sigma_x'])
-            p.y = p.y + random.gauss(0, self.config['resample_sigma_y'])
-            p.theta = p.theta + random.gauss(0, self.config['resample_sigma_angle'])
-        self.particles = deepcopy(resample)
+            x = p.x + random.gauss(0, self.config['resample_sigma_x'])
+            y = p.y + random.gauss(0, self.config['resample_sigma_y'])
+            theta = p.theta + random.gauss(0, self.config['resample_sigma_angle'])
+            newP = Particle(x, y, theta, p.weight)
+            newlist.append(newP)
+
+        self.particles = deepcopy(newlist)
 
     """ Move and update the particles """
     def move_particles(self, dist, angle, firstmove):
