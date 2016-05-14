@@ -62,7 +62,8 @@ class Robot:
         self.particle_publisher_timer = rospy.Timer(rospy.Duration(0.1), self.publish_particles)
 
         # for 2 and 3, set seed to config file but 200 for 1
-        #random.seed(100)
+        # 100 worked for part 1
+        random.seed(200)
 
         #self.rate = rospy.Rate(1)
         #rospy.sleep(1) 
