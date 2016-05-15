@@ -103,7 +103,7 @@ class Robot:
             move_function(angle, 0)
             angle = math.radians(angle)
             for x in xrange(steps):
-                print 'Performing move', angle, dist, steps
+                #print 'Performing move', angle, dist, steps
                 move_function(0, dist)
                 # Move update for the particles
                 self.move_particles(dist, angle, firstmove, x)
