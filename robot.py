@@ -63,7 +63,7 @@ class Robot:
 
         # for 2 and 3, set seed to config file but 200 for 1
         # 100 worked for part 1
-        random.seed(200)
+        random.seed(100)
 
         #self.rate = rospy.Rate(1)
         #rospy.sleep(1) 
